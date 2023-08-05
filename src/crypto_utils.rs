@@ -1,7 +1,7 @@
-use aes_gcm::{aead::OsRng, KeyInit};
+use aes_gcm::aead::OsRng;
 use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
-use sha2::{Sha256, Digest};
+use sha2::{Digest, Sha256};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CryptographyData {

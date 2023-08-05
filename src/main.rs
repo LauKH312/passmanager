@@ -41,7 +41,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match load_from_backup() {
                     Ok(_) => println!("Restored from backup!"),
                     Err(e) => println!("Restoring backup failed! {e}"),
-                }
+                };
                 exit(0);
             }
             false => {
@@ -134,12 +134,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         r"
     -------------------------------
     Commands:
-    add <name> <username> <password>
-    generate <name> <username>
-    get <name>
-    rm <name>
-    list
-    exit
+    add <name> <username> <password>        -- add entry to store
+    generate <name> <username>              -- generate password for entry and add to store
+    get <name>                              -- get entry from store
+    rm <name>                               -- remove entry from store
+    list                                    -- list all entries
+    exit                                    -- exit program (DO NOT USE CTRL+C)
     -------------------------------
     "
     );
