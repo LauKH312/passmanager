@@ -5,7 +5,7 @@ use aes_gcm::{
     Nonce,
 };
 
-use rand::RngCore;
+use rand::{Rng, RngCore};
 use sha2::{Digest, Sha256};
 use std::{error::Error, fs::File, path::Path, process::exit};
 
@@ -67,7 +67,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut store_writer = File::create(STORE_URL)?;
 
     // if store is not empty, prompt login, and hashes provided pass.
-    let master = match store.master.as_ref() {
+    let master_hash = match store.master.as_ref() {
         Some(master_pass) => login_existing(master_pass),
         None => match get_new_master_key() {
             Ok(master) => {
@@ -80,8 +80,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     nonce: nonce.to_vec(),
                 };
 
-                serde_json::to_writer(store_file, &store)?;
+                // serde_json::to_writer(&store_writer, &store)?;
 
+                println!("Successfully created new key!");
                 Ok(master)
             }
             Err(e) => {
@@ -91,7 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    if let Err(e) = master {
+    if let Err(e) = master_hash {
         // println!("Login failed!");
         println!("{e}");
         exit_safe(None, store, &mut store_writer);
@@ -99,24 +100,24 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Login successful!");
     }
 
-    let master = master.unwrap();
+    let master = master_hash.unwrap();
 
     assert_eq!(master.len(), 32, "Key length is not 32 bytes!");
 
     let key = Key::<Aes256Gcm>::from_slice(&master);
 
-    let cipher = Aes256Gcm::new(&key);
+    let cipher = Aes256Gcm::new(key);
     let nonce = Nonce::from_slice(&store.cryptography_data.nonce);
 
     let encrypt = |input: &str| -> Vec<u8> {
         cipher
-            .encrypt(&nonce, input.as_bytes())
+            .encrypt(nonce, input.as_bytes())
             .expect("Encryption failed!")
     };
 
     let decrypt = |input: &Vec<u8>| -> String {
         let deciphered = cipher
-            .decrypt(&nonce, input.as_slice())
+            .decrypt(nonce, input.as_slice())
             .expect("Decryption failed!");
         String::from_utf8(deciphered).unwrap()
     };
@@ -126,6 +127,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     -------------------------------
     Commands:
     add <name> <username> <password>
+    generate <name> <username>
     get <name>
     rm <name>
     list
@@ -135,7 +137,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     );
 
     loop {
-        println!("");
+        println!();
         println!("---------------------");
         let mut input = String::with_capacity(256);
         std::io::stdin().read_line(&mut input)?;
@@ -178,6 +180,34 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 println!("Entry added!");
             }
 
+            Some("generate") => {
+                let name = match args.next() {
+                    Some(name) => name,
+                    None => {
+                        println!("Invalid command!");
+                        continue;
+                    }
+                };
+
+                let username = match args.next() {
+                    Some(username) => username,
+                    None => {
+                        println!("Invalid command!");
+                        continue;
+                    }
+                };
+
+                let password = random_text(32);
+                println!("Generated password: [{password}]");
+
+                let entry = store::Entry {
+                    username: Some(encrypt(username)),
+                    password: encrypt(&password),
+                };
+
+                store.entries.insert(name.to_string(), entry);
+            }
+
             Some("get") => {
                 let name = match args.next() {
                     Some(name) => name,
@@ -190,7 +220,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 let entry_cipher = match store
                     .entries
                     .iter()
-                    .find(|(key, entry_cipher)| key.as_str() == name)
+                    .find(|(key, _entry_cipher)| key.as_str() == name)
                 {
                     Some(entry_cipher) => entry_cipher,
                     None => {
@@ -200,7 +230,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 let username = match &entry_cipher.1.username {
-                    Some(username) => decrypt(&username),
+                    Some(username) => decrypt(username),
                     None => String::from(""),
                 };
 
@@ -214,10 +244,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Some("rm") => {
                 let name = args.next().unwrap();
-                let index = store
+                let _index = store
                     .entries
                     .iter()
-                    .position(|(key, entry)| key == name)
+                    .position(|(key, _entry)| key == name)
                     .unwrap();
 
                 store.entries.remove(name);
@@ -226,8 +256,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
 
             Some("list") => {
-                for entry in store.entries.iter() {
-                    println!("{}", &entry.0);
+                println!("vvvvvv");
+                // print sorted list of entries
+                let mut entries: Vec<&String> = store.entries.keys().collect();
+                entries.sort();
+                for entry in entries {
+                    println!("{entry}");
                 }
             }
 
@@ -299,9 +333,19 @@ fn is_empty(input: &File) -> bool {
     metadata.len() == 0
 }
 
+#[allow(dead_code)]
 fn random_bytes(len: usize) -> Vec<u8> {
     let mut rng = OsRng;
     let mut bytes = vec![0u8; len];
     rng.fill_bytes(&mut bytes);
     bytes
+}
+
+fn random_text(len: usize) -> String {
+    let mut rng = OsRng;
+    let mut str = String::with_capacity(len);
+    for _ in 0..len {
+        str.push(rng.gen_range(33_u8..127) as char);
+    }
+    str
 }

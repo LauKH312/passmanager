@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
+use aes_gcm::{KeyInit};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
