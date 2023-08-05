@@ -46,10 +46,14 @@ impl Entry {
     pub fn encrypt(&mut self, data: &[u8], master_password: &Vec<u8>) -> Vec<u8> {
         let mut data = data.to_vec();
 
+        assert!(data.len() <= 32);
+
         let salt_avail_space = 32 - data.len();
-        if salt_avail_space >= 4 {
-            self.cryptography_data.salt.truncate(salt_avail_space);
-            data.extend(self.cryptography_data.salt.clone());
+
+        {
+            let salt = crate::crypto_utils::random_bytes(salt_avail_space);
+            data.extend(&salt);
+            self.cryptography_data.salt = salt;
         }
 
         let key = Key::<Aes256Gcm>::from_slice(master_password);
@@ -94,10 +98,11 @@ impl Entry {
         let mut entry = Entry::new(password.clone(), username.map(|username| username.to_vec()));
 
         entry.password = entry.encrypt(password, master_password);
-        entry.username = entry
-            .username
-            .clone()
-            .map(|username| entry.encrypt(&username, master_password));
+        entry.username = match username {
+            Some(username) => Some(entry.encrypt(username, master_password)),
+            None => None,
+        };
+
         return entry;
     }
 }

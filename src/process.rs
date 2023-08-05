@@ -1,4 +1,4 @@
-use std::{fs::File, process::exit};
+use std::{error::Error, fs::File, process::exit};
 
 use crate::{
     crypto_utils,
@@ -28,16 +28,11 @@ pub fn add_cmd(args: &mut std::str::SplitWhitespace<'_>, master: &Vec<u8>, store
             return;
         }
     };
-    let entry = Entry::from_unencrypted(Some(username), &password.as_bytes().to_vec(), master);
+    let password = password.as_bytes();
+
+    let entry = Entry::from_unencrypted(Some(username), &password.to_vec(), master);
     store.entries.insert(name.to_string(), entry);
     println!("Entry added!");
-
-    // let entry = store::Entry {
-    //     username: Some(encrypt(username)),
-    //     pass_hash: encrypt(password),
-    // };
-
-    // serde_json::to_writer(&store_file, &mut store)?;
 }
 
 pub fn generate_cmd(args: &mut std::str::SplitWhitespace<'_>, master: &Vec<u8>, store: &mut Store) {
@@ -63,23 +58,41 @@ pub fn generate_cmd(args: &mut std::str::SplitWhitespace<'_>, master: &Vec<u8>, 
         master,
     );
     store.entries.insert(name.to_string(), entry);
+}
 
-    // let entry = store::Entry {
-    //     username: Some(encrypt(username)),
-    //     password: encrypt(&password),
-    // };
+pub fn get_cmd(args: &mut std::str::SplitWhitespace<'_>, store: &Store, master: &Vec<u8>) {
+    let name = match args.next() {
+        Some(name) => name,
+        None => {
+            println!("Invalid command!");
+            return;
+        }
+    };
+    let entry_cipher = match store
+        .entries
+        .iter()
+        .find(|(key, _entry_cipher)| key.as_str() == name)
+    {
+        Some(entry_cipher) => entry_cipher,
+        None => {
+            println!("Entry not found!");
+            return;
+        }
+    };
+    let entry = Entry::decrypt(entry_cipher.1, master).expect("Decryption failed!");
+    let username = entry.username.unwrap();
+    let password = entry.password;
+    let username = String::from_utf8(username).unwrap();
+    let password = String::from_utf8(password).unwrap();
+    println!("Name: {name}");
+    println!("Username: {username}");
+    println!("Password: {password}");
 }
 
 pub fn rm_cmd(mut args: std::str::SplitWhitespace<'_>, store: &mut Store) {
     let name = args.next().unwrap();
-    let _index = store
-        .entries
-        .iter()
-        .position(|(key, _entry)| key == name)
-        .unwrap();
 
     store.entries.remove(name);
-    // serde_json::to_writer(&store_file, &mut store)?;
     println!("Entry removed!");
 }
 
@@ -104,3 +117,32 @@ pub fn exit_safe(dbg: Option<&str>, mut store: Store, store_file: &mut File) -> 
         None => exit(0),
     }
 }
+
+pub fn prompt_new_master_password() -> Result<Vec<u8>, Box<dyn Error>> {
+    println!("Set master password (no longer than 28 characters): ");
+    let mut input = String::with_capacity(256);
+    std::io::stdin().read_line(&mut input)?;
+    println!("Confirm master password: ");
+    let mut input2 = String::with_capacity(256);
+    std::io::stdin().read_line(&mut input2)?;
+
+    match input == input2 {
+        true => Ok(input.into_bytes()),
+        false => Err("Passwords do not match!".into()),
+    }
+}
+
+pub fn prompt_login(master_pass: &Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
+    println!("Enter master password: ");
+    let mut input = String::with_capacity(256);
+    std::io::stdin().read_line(&mut input)?;
+
+    let hash = crypto_utils::hash(&input);
+    if &hash == master_pass {
+        println!("Login successful!");
+        Ok(input.into_bytes())
+    } else {
+        Err("Password is incorrect!".into())
+    }
+}
+

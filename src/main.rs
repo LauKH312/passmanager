@@ -1,6 +1,6 @@
-use std::{error::Error, fs::File, ops::ControlFlow, path::Path, process::exit};
+use std::{error::Error, fs::File, path::Path, process::exit};
 
-use crate::store::{Entry, Store};
+use crate::store::Store;
 
 mod crypto_utils;
 mod process;
@@ -61,11 +61,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // if store is not empty, prompt login, and hashes provided pass.
     let master = match store.master.as_ref() {
-        Some(master_hash) => prompt_login(master_hash),
+        Some(master_hash) => process::prompt_login(master_hash),
 
         // Handle case where master password is not set.
         // Matches if user has properly set the new master password.
-        None => match prompt_new_master_password() {
+        None => match process::prompt_new_master_password() {
             Ok(master) => {
                 let master_hash = String::from_utf8(master.clone()).unwrap();
                 let master_hash = crypto_utils::hash(&master_hash);
@@ -124,45 +124,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Some("generate") => process::generate_cmd(&mut args, &master, &mut store),
 
-            Some("get") => {
-                let name = match args.next() {
-                    Some(name) => name,
-                    None => {
-                        println!("Invalid command!");
-                        continue;
-                    }
-                };
-
-                let entry_cipher = match store
-                    .entries
-                    .iter()
-                    .find(|(key, _entry_cipher)| key.as_str() == name)
-                {
-                    Some(entry_cipher) => entry_cipher,
-                    None => {
-                        println!("Entry not found!");
-                        continue;
-                    }
-                };
-
-                let entry = Entry::decrypt(entry_cipher.1, &master).expect("Decryption failed!");
-
-                let username = entry.username.unwrap();
-                let password = entry.password;
-
-                let username = String::from_utf8(username).unwrap();
-                let password = String::from_utf8(password).unwrap();
-
-                println!("Name: {name}");
-                println!("Username: {username}");
-                println!("Password: {password}");
-            }
+            Some("get") => process::get_cmd(&mut args, &store, &master),
 
             Some("rm") => process::rm_cmd(args, &mut store),
 
             Some("list") => process::list_cmd(&store),
 
             Some("exit") => process::exit_safe(None, store, &mut store_writer),
+
             _ => {
                 println!("Invalid command!");
             }
@@ -177,34 +146,6 @@ fn load_from_backup() -> Result<(), Box<dyn Error>> {
     serde_json::to_writer(store_file, &mut backup)?;
 
     Ok(())
-}
-
-fn prompt_new_master_password() -> Result<Vec<u8>, Box<dyn Error>> {
-    println!("Set master password (no longer than 28 characters): ");
-    let mut input = String::with_capacity(256);
-    std::io::stdin().read_line(&mut input)?;
-    println!("Confirm master password: ");
-    let mut input2 = String::with_capacity(256);
-    std::io::stdin().read_line(&mut input2)?;
-
-    match input == input2 {
-        true => Ok(input.into_bytes()),
-        false => Err("Passwords do not match!".into()),
-    }
-}
-
-fn prompt_login(master_pass: &Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
-    println!("Enter master password: ");
-    let mut input = String::with_capacity(256);
-    std::io::stdin().read_line(&mut input)?;
-
-    let hash = crypto_utils::hash(&input);
-    if &hash == master_pass {
-        println!("Login successful!");
-        Ok(input.into_bytes())
-    } else {
-        Err("Password is incorrect!".into())
-    }
 }
 
 fn is_empty(input: &File) -> bool {
