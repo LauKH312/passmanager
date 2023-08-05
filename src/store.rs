@@ -1,16 +1,17 @@
-use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit, aes::Aes256};
+use std::collections::HashMap;
+
+use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Store {
     pub master: Option<Vec<u8>>,
-    pub entries: Vec<Entry>,
+    pub entries: HashMap<String, Entry>,
     pub cryptography_data: CryptographyData,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Entry {
-    pub name: String,
     pub password: Vec<u8>,
     pub username: Option<Vec<u8>>,
 }
@@ -19,7 +20,7 @@ impl Store {
     pub fn empty() -> Store {
         Store {
             master: None,
-            entries: Vec::new(),
+            entries: HashMap::new(),
             cryptography_data: CryptographyData {
                 salt: Vec::new(),
                 nonce: Vec::new(),
@@ -32,15 +33,4 @@ impl Store {
 pub struct CryptographyData {
     pub salt: Vec<u8>,
     pub nonce: Vec<u8>,
-}
-impl CryptographyData {
-    pub fn get_key(key: &[u8]) -> Aes256Gcm {
-        let key = GenericArray::from_slice(key);
-        Aes256Gcm::new(key)
-    }
-
-    pub fn generate(key: Aes256Gcm) -> Self {
-
-        todo!()
-    }
 }
