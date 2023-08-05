@@ -3,7 +3,7 @@ use rand::{Rng, RngCore};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CryptographyData {
     pub salt: Vec<u8>,
     pub nonce: Vec<u8>,
