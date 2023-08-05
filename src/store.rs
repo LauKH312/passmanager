@@ -1,6 +1,6 @@
 use std::collections::HashMap;
+use crate::crypto_utils::CryptographyData;
 
-use aes_gcm::{KeyInit};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -27,10 +27,4 @@ impl Store {
             },
         }
     }
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct CryptographyData {
-    pub salt: Vec<u8>,
-    pub nonce: Vec<u8>,
 }

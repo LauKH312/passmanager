@@ -2,6 +2,6 @@
 
 - [x] Fix AES encryption
 - [x] Read from backup if necessary
-- [ ] fix key
+- [x] fix key
 - [ ] Implement salting
 - [x] Fix panics wiping data

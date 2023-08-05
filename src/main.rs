@@ -5,11 +5,12 @@ use aes_gcm::{
     Nonce,
 };
 
-use rand::{Rng, RngCore};
-use sha2::{Digest, Sha256};
 use std::{error::Error, fs::File, path::Path, process::exit};
 
-use crate::store::{CryptographyData, Store};
+use crate::crypto_utils::CryptographyData;
+use crate::store::Store;
+
+mod crypto_utils;
 mod store;
 // use clap::Parser;
 
@@ -67,11 +68,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut store_writer = File::create(STORE_URL)?;
 
     // if store is not empty, prompt login, and hashes provided pass.
-    let master_hash = match store.master.as_ref() {
+    let master = match store.master.as_ref() {
         Some(master_pass) => login_existing(master_pass),
-        None => match get_new_master_key() {
+        None => match get_new_master_password() {
             Ok(master) => {
-                store.master = Some(master.clone());
+                let master_hash = String::from_utf8(master.clone()).unwrap();
+                let master_hash = crypto_utils::hash(&master_hash);
+
+                store.master = Some(master_hash);
 
                 let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
 
@@ -92,7 +96,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    if let Err(e) = master_hash {
+    if let Err(e) = master {
         // println!("Login failed!");
         println!("{e}");
         exit_safe(None, store, &mut store_writer);
@@ -100,11 +104,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Login successful!");
     }
 
-    let master = master_hash.unwrap();
+    let mut master = master.unwrap();
+
+    while master.len() < 32 {
+        master.push(0);
+    }
 
     assert_eq!(master.len(), 32, "Key length is not 32 bytes!");
 
-    let key = Key::<Aes256Gcm>::from_slice(&master);
+    let key = Key::<Aes256Gcm>::from_slice(master.as_slice());
 
     let cipher = Aes256Gcm::new(key);
     let nonce = Nonce::from_slice(&store.cryptography_data.nonce);
@@ -197,7 +205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     }
                 };
 
-                let password = random_text(32);
+                let password = crypto_utils::random_text(32);
                 println!("Generated password: [{password}]");
 
                 let entry = store::Entry {
@@ -282,7 +290,7 @@ fn load_from_backup() -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn get_new_master_key() -> Result<Vec<u8>, Box<dyn Error>> {
+fn get_new_master_password() -> Result<Vec<u8>, Box<dyn Error>> {
     println!("Set master password: ");
     let mut input = String::with_capacity(256);
     std::io::stdin().read_line(&mut input)?;
@@ -291,7 +299,7 @@ fn get_new_master_key() -> Result<Vec<u8>, Box<dyn Error>> {
     std::io::stdin().read_line(&mut input2)?;
 
     match input == input2 {
-        true => Ok(hash(&input)),
+        true => Ok(input.into_bytes()),
         false => Err("Passwords do not match!".into()),
     }
 }
@@ -300,10 +308,10 @@ fn login_existing(master_pass: &Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
     println!("Enter master password: ");
     let mut input = String::with_capacity(256);
     std::io::stdin().read_line(&mut input)?;
-    let hash = hash(&input);
+    let hash = crypto_utils::hash(&input);
     if &hash == master_pass {
         println!("Login successful!");
-        Ok(hash)
+        Ok(input.into_bytes())
     } else {
         Err("Password is incorrect!".into())
     }
@@ -321,31 +329,7 @@ fn exit_safe(dbg: Option<&str>, mut store: Store, store_file: &mut File) -> ! {
     }
 }
 
-fn hash(input: &str) -> Vec<u8> {
-    let mut hasher = Sha256::new();
-    hasher.update(input);
-    let result = hasher.finalize();
-    result.to_vec()
-}
-
 fn is_empty(input: &File) -> bool {
     let metadata = input.metadata().unwrap();
     metadata.len() == 0
-}
-
-#[allow(dead_code)]
-fn random_bytes(len: usize) -> Vec<u8> {
-    let mut rng = OsRng;
-    let mut bytes = vec![0u8; len];
-    rng.fill_bytes(&mut bytes);
-    bytes
-}
-
-fn random_text(len: usize) -> String {
-    let mut rng = OsRng;
-    let mut str = String::with_capacity(len);
-    for _ in 0..len {
-        str.push(rng.gen_range(33_u8..127) as char);
-    }
-    str
 }
