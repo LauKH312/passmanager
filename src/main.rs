@@ -1,4 +1,4 @@
-use std::{error::Error, fs::File, path::Path, process::exit};
+use std::{fs::File, path::Path, process::exit};
 
 use crate::store::Store;
 
@@ -27,24 +27,19 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let store_file = File::open(STORE_URL)?;
 
     // if store is empty, create new store or restore from backup
-    if is_empty(&store_file) {
+    if store::is_empty(&store_file) {
         match Path::new(BACKUP_URL).exists() {
-            true => {
-                println!("Backup exists, restoring...");
-                match load_from_backup() {
-                    Ok(_) => println!("Restored from backup!"),
-                    Err(e) => println!("Restoring backup failed! {e}"),
-                };
-            }
-            false => {
-                println!("Store is empty, creating new store...");
-                let mut store: Store = Store::empty();
-                let writer = File::create(STORE_URL)?;
-                serde_json::to_writer(&writer, &mut store)?;
-                println!("Store created!");
-            }
+            true => match store::load_from_backup() {
+                Ok(_) => println!("Restored from backup!"),
+                Err(e) => println!("Restoring backup failed! {e}"),
+            },
+
+            false => match store::create_store() {
+                Ok(_) => println!("Created new store!"),
+                Err(e) => println!("Creating new store failed! {e}"),
+            },
         };
-        exit(0);
+        exit(0); // exit program
     }
 
     // load store
@@ -53,7 +48,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     {
         // Create backup, later File::create() will overwrite existing file
         let backup = File::create(BACKUP_URL)?;
-        serde_json::to_writer(&backup, &mut store)?;
+        serde_json::to_writer(&backup, &store)?;
     }
 
     // create write
@@ -67,7 +62,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Matches if user has properly set the new master password.
         None => match process::prompt_new_master_password() {
             Ok(master) => {
-                let master_hash = String::from_utf8(master.clone()).unwrap();
+                let master_hash = String::from_utf8(master.clone())?;
                 let master_hash = crypto_utils::hash(&master_hash);
 
                 store.master = Some(master_hash);
@@ -89,7 +84,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Login successful!");
     }
 
-    let mut master = master.unwrap();
+    let mut master = master?;
 
     while master.len() < 32 {
         master.push(0);
@@ -97,19 +92,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     assert_eq!(master.len(), 32, "Key length is not 32 bytes!");
 
-    println!(
-        r"
-    -------------------------------
-    Commands:
-    add <name> <username> <password>        -- add entry to store
-    generate <name> <username>              -- generate password for entry and add to store
-    get <name>                              -- get entry from store
-    rm <name>                               -- remove entry from store
-    list                                    -- list all entries
-    exit                                    -- exit program (DO NOT USE CTRL+C)
-    -------------------------------
-    "
-    );
+    process::print_guide();
 
     loop {
         println!();
@@ -137,18 +120,4 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         }
     }
-}
-
-fn load_from_backup() -> Result<(), Box<dyn Error>> {
-    let store_file = File::create(STORE_URL)?;
-    let backup_file = File::open(BACKUP_URL)?;
-    let mut backup: Store = serde_json::from_reader(&backup_file)?;
-    serde_json::to_writer(store_file, &mut backup)?;
-
-    Ok(())
-}
-
-fn is_empty(input: &File) -> bool {
-    let metadata = input.metadata().unwrap();
-    metadata.len() == 0
 }

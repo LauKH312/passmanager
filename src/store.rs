@@ -1,5 +1,5 @@
-use crate::crypto_utils::CryptographyData;
-use std::collections::HashMap;
+use crate::{crypto_utils::CryptographyData, BACKUP_URL, STORE_URL};
+use std::{collections::HashMap, error::Error, fs::File};
 
 use aes_gcm::{
     aead::{self, Aead, OsRng},
@@ -43,7 +43,7 @@ impl Entry {
         }
     }
 
-    pub fn encrypt(&mut self, data: &[u8], master_password: &Vec<u8>) -> Vec<u8> {
+    pub fn encrypt(&mut self, data: &[u8], master_password: &[u8]) -> Vec<u8> {
         let mut data = data.to_vec();
 
         assert!(data.len() <= 32);
@@ -57,7 +57,7 @@ impl Entry {
         }
 
         let key = Key::<Aes256Gcm>::from_slice(master_password);
-        let cipher = Aes256Gcm::new(&key);
+        let cipher = Aes256Gcm::new(key);
         let nonce = Nonce::from_slice(&self.cryptography_data.nonce);
         cipher.encrypt(nonce, data.as_slice()).unwrap()
     }
@@ -66,7 +66,7 @@ impl Entry {
         let mut entry = self.to_owned();
 
         let key = Key::<Aes256Gcm>::from_slice(master_password);
-        let cipher = Aes256Gcm::new(&key);
+        let cipher = Aes256Gcm::new(key);
         let nonce = self.cryptography_data.nonce.clone();
         let decrypted = cipher.decrypt(Nonce::from_slice(&nonce), entry.password.as_slice())?;
 
@@ -92,17 +92,41 @@ impl Entry {
 
     pub fn from_unencrypted(
         username: Option<&[u8]>,
-        password: &Vec<u8>,
-        master_password: &Vec<u8>,
+        password: &[u8],
+        master_password: &[u8],
     ) -> Entry {
-        let mut entry = Entry::new(password.clone(), username.map(|username| username.to_vec()));
+        let mut entry = Entry::new(
+            password.to_owned(),
+            username.map(|username| username.to_vec()),
+        );
 
         entry.password = entry.encrypt(password, master_password);
-        entry.username = match username {
-            Some(username) => Some(entry.encrypt(username, master_password)),
-            None => None,
-        };
+        entry.username = username.map(|username| entry.encrypt(username, master_password));
 
-        return entry;
+        entry
     }
+}
+
+pub fn create_store() -> Result<(), Box<dyn Error>> {
+    println!("Store is empty, creating new store...");
+    let store: Store = Store::empty();
+    let writer = File::create(STORE_URL)?;
+    serde_json::to_writer(&writer, &store)?;
+    println!("Store created!");
+    Ok(())
+}
+
+pub fn load_from_backup() -> Result<(), Box<dyn Error>> {
+    println!("Store is empty, restoring from backup...");
+    let store_file = File::create(STORE_URL)?;
+    let backup_file = File::open(BACKUP_URL)?;
+    let backup: Store = serde_json::from_reader(&backup_file)?;
+    serde_json::to_writer(store_file, &backup)?;
+
+    Ok(())
+}
+
+pub fn is_empty(input: &File) -> bool {
+    let metadata = input.metadata().unwrap();
+    metadata.len() == 0
 }

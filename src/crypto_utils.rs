@@ -32,3 +32,11 @@ pub fn random_text(len: usize) -> String {
     }
     str
 }
+
+pub fn generate_salt() -> [u8; 12] {
+    // generate random salt
+    let mut salt = [0u8; 12];
+    let mut rng = OsRng;
+    rng.fill_bytes(&mut salt);
+    salt
+}

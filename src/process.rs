@@ -1,11 +1,11 @@
-use std::{error::Error, fs::File, process::exit};
+use std::{error::Error, fs::File, process::exit, str::SplitWhitespace};
 
 use crate::{
     crypto_utils,
     store::{Entry, Store},
 };
 
-pub fn add_cmd(args: &mut std::str::SplitWhitespace<'_>, master: &Vec<u8>, store: &mut Store) {
+pub fn add_cmd(args: &mut SplitWhitespace<'_>, master: &[u8], store: &mut Store) {
     let name = match args.next() {
         Some(name) => name,
         None => {
@@ -30,12 +30,12 @@ pub fn add_cmd(args: &mut std::str::SplitWhitespace<'_>, master: &Vec<u8>, store
     };
     let password = password.as_bytes();
 
-    let entry = Entry::from_unencrypted(Some(username), &password.to_vec(), master);
+    let entry = Entry::from_unencrypted(Some(username), password, master);
     store.entries.insert(name.to_string(), entry);
     println!("Entry added!");
 }
 
-pub fn generate_cmd(args: &mut std::str::SplitWhitespace<'_>, master: &Vec<u8>, store: &mut Store) {
+pub fn generate_cmd(args: &mut SplitWhitespace<'_>, master: &[u8], store: &mut Store) {
     let name = match args.next() {
         Some(name) => name,
         None => {
@@ -52,15 +52,11 @@ pub fn generate_cmd(args: &mut std::str::SplitWhitespace<'_>, master: &Vec<u8>, 
     };
     let password = crypto_utils::random_text(32);
     println!("Generated password: [{password}]");
-    let entry = Entry::from_unencrypted(
-        Some(username.as_bytes()),
-        &password.as_bytes().to_vec(),
-        master,
-    );
+    let entry = Entry::from_unencrypted(Some(username.as_bytes()), password.as_bytes(), master);
     store.entries.insert(name.to_string(), entry);
 }
 
-pub fn get_cmd(args: &mut std::str::SplitWhitespace<'_>, store: &Store, master: &Vec<u8>) {
+pub fn get_cmd(args: &mut SplitWhitespace<'_>, store: &Store, master: &[u8]) {
     let name = match args.next() {
         Some(name) => name,
         None => {
@@ -89,7 +85,7 @@ pub fn get_cmd(args: &mut std::str::SplitWhitespace<'_>, store: &Store, master: 
     println!("Password: {password}");
 }
 
-pub fn rm_cmd(mut args: std::str::SplitWhitespace<'_>, store: &mut Store) {
+pub fn rm_cmd(mut args: SplitWhitespace<'_>, store: &mut Store) {
     let name = args.next().unwrap();
 
     store.entries.remove(name);
@@ -106,8 +102,8 @@ pub fn list_cmd(store: &Store) {
     }
 }
 
-pub fn exit_safe(dbg: Option<&str>, mut store: Store, store_file: &mut File) -> ! {
-    serde_json::to_writer(store_file, &mut store).unwrap();
+pub fn exit_safe(dbg: Option<&str>, store: Store, store_file: &mut File) -> ! {
+    serde_json::to_writer(store_file, &store).unwrap();
 
     // write eof
     // store_file.flush().unwrap();
@@ -146,3 +142,18 @@ pub fn prompt_login(master_pass: &Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
     }
 }
 
+pub fn print_guide() {
+    println!(
+        r"
+    -------------------------------
+    Commands:
+    add <name> <username> <password>        -- add entry to store
+    generate <name> <username>              -- generate password for entry and add to store
+    get <name>                              -- get entry from store
+    rm <name>                               -- remove entry from store
+    list                                    -- list all entries
+    exit                                    -- exit program (DO NOT USE CTRL+C)
+    -------------------------------
+    "
+    );
+}
