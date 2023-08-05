@@ -1,9 +1,9 @@
-use aes_gcm::aead::generic_array::GenericArray;
+use aes_gcm::{aead::generic_array::GenericArray, Aes256Gcm, KeyInit, aes::Aes256};
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Store {
-    pub master: Option<String>,
+    pub master: Option<Vec<u8>>,
     pub entries: Vec<Entry>,
     pub cryptography_data: CryptographyData,
 }
@@ -11,8 +11,8 @@ pub struct Store {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Entry {
     pub name: String,
-    pub password: String,
-    pub username: Option<String>,
+    pub password: Vec<u8>,
+    pub username: Option<Vec<u8>>,
 }
 
 impl Store {
@@ -23,7 +23,6 @@ impl Store {
             cryptography_data: CryptographyData {
                 salt: Vec::new(),
                 nonce: Vec::new(),
-                chipher: Vec::new(),
             },
         }
     }
@@ -33,18 +32,15 @@ impl Store {
 pub struct CryptographyData {
     pub salt: Vec<u8>,
     pub nonce: Vec<u8>,
-    pub chipher: Vec<u8>,
 }
 impl CryptographyData {
-    // pub fn generate(key: &GenericArray<u8, u8>) -> &[u8] {
-    //     todo!()
-    // }
+    pub fn get_key(key: &[u8]) -> Aes256Gcm {
+        let key = GenericArray::from_slice(key);
+        Aes256Gcm::new(key)
+    }
 
-    // pub fn encrypt(&self, key: &GenericArray<u8, u8>, plaintext: &str) -> &[u8] {
-    //     todo!()
-    // }
+    pub fn generate(key: Aes256Gcm) -> Self {
 
-    // pub fn decrypt(&self, key: &GenericArray<u8, u8>, cyphertext: &str) -> &[u8] {
-    //     todo!()
-    // }
+        todo!()
+    }
 }

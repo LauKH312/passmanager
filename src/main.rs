@@ -6,7 +6,7 @@ use aes_gcm::{
 };
 
 use sha2::{Digest, Sha256};
-use std::{fs::File, path::Path, process::exit};
+use std::{error::Error, fs::File, io::Write, path::Path, process::exit};
 
 use crate::store::{CryptographyData, Store};
 mod store;
@@ -36,6 +36,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         println!("Store is empty, creating new store...");
         let mut store: Store = Store::empty();
 
+        if !Path::new(BACKUP_URL).exists() {
+            println!("Backup does not exist, creating...");
+            let backup_file = File::open(BACKUP_URL)?;
+            let mut backup: Store = serde_json::from_reader(&backup_file)?;
+            serde_json::to_writer(&store_file, &mut backup)?;
+            println!("Backup created!");
+        }
+
         let writer = File::create(STORE_URL)?;
         serde_json::to_writer(&writer, &mut store)?;
 
@@ -44,68 +52,43 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let mut store: Store = serde_json::from_reader(&store_file)?;
 
-    // Create backup, File::create() will overwrite existing file
-    let backup = File::create(BACKUP_URL)?;
-    serde_json::to_writer(&backup, &mut store)?;
+    {
+        // Create backup, File::create() will overwrite existing file
+        let backup = File::create(BACKUP_URL)?;
+        serde_json::to_writer(&backup, &mut store)?;
+    }
 
     // create write
-    let store_file = File::create(STORE_URL)?;
+    let mut store_file = File::create(STORE_URL)?;
 
-    // if store is not empty, prompt login
+    // if store is not empty, prompt login, and hashes provided pass.
     let master = match store.master.as_ref() {
-        Some(master_pass) => {
-            // prompt login
-            println!("Enter master password: ");
-            let mut input = String::with_capacity(256);
-            std::io::stdin().read_line(&mut input)?;
-
-            // match password with first record
-            let hash = hash_str(&input);
-            if &hash == master_pass {
-                println!("Login successful!");
-                hash
-            } else {
-                panic!("Login failed!");
-            }
-        }
-        None => {
-            // prompt first time setup
-            println!("Set master password: ");
-            let mut input = String::with_capacity(256);
-            std::io::stdin().read_line(&mut input)?;
-
-            println!("Confirm master password: ");
-            let mut input2 = String::with_capacity(256);
-            std::io::stdin().read_line(&mut input2)?;
-
-            if input == input2 {
-                store.master = Some(hash_str(&input));
-                serde_json::to_writer(&store_file, &mut store)?;
-                println!("Master password set!");
-                hash_str(&input)
-            } else {
-                panic!("Passwords do not match!");
-            }
-        }
+        Some(master_pass) => login_existing(master_pass)?,
+        None => setup_new(&mut store, &store_file)?,
     };
 
-    println!("Hashing master password...");
-    let master_hash = hash_str(&master);
-
     println!("Creating key...");
-    let key: &[u8; 32] = master_hash.as_bytes().try_into()?;
-    let key = Key::<Aes256Gcm>::from_slice(key);
+
+    assert_eq!(master.len(), 32, "Key length is not 32 bytes!");
+
+    let key = Key::<Aes256Gcm>::from_slice(&master);
     // let key = CryptographyData::get_key(key);
 
-    // let crypto = CryptographyData::generate(key);
-
+    // let cipher = crypto.chipher;
+    // let nonce = crypto.nonce;
     let cipher = Aes256Gcm::new(&key);
-    let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+    let nonce = Nonce::from_slice(&store.cryptography_data.nonce);
 
-    let encrypt = |input: &str| -> Vec<u8> { cipher.encrypt(&nonce, input.as_bytes()).unwrap() };
+    let encrypt = |input: &str| -> Vec<u8> {
+        cipher
+            .encrypt(&nonce, input.as_bytes())
+            .expect("Encryption failed!")
+    };
 
-    let decrypt = |input: &str| -> String {
-        let deciphered = cipher.decrypt(&nonce, input.as_bytes()).unwrap();
+    let decrypt = |input: &Vec<u8>| -> String {
+        let deciphered = cipher
+            .decrypt(&nonce, input.as_slice())
+            .expect("Decryption failed!");
         String::from_utf8(deciphered).unwrap()
     };
 
@@ -149,13 +132,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 };
 
                 let entry = store::Entry {
-                    name: String::from_utf8(encrypt(name)).unwrap(),
-                    username: Some(String::from_utf8(encrypt(username)).unwrap()),
-                    password: String::from_utf8(encrypt(password)).unwrap(),
+                    name: name.to_string(),
+                    username: Some(encrypt(username)),
+                    password: encrypt(password),
                 };
 
                 store.entries.push(entry);
-                serde_json::to_writer(&store_file, &mut store)?;
+                // serde_json::to_writer(&store_file, &mut store)?;
                 println!("Entry added!");
             }
 
@@ -185,15 +168,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     None => String::from(""),
                 };
 
-                let entry = store::Entry {
-                    name: decrypt(&entry_cipher.name),
-                    username: Some(username),
-                    password: decrypt(&entry_cipher.password),
-                };
+                let password = decrypt(&entry_cipher.password);
+                let name = entry_cipher.name.clone();
 
-                println!("Name: {}", entry.name);
-                println!("Username: {}", entry.username.as_ref().unwrap());
-                println!("Password: {}", entry.password);
+                println!("Name: {name}");
+                println!("Username: {username}");
+                println!("Password: {password}");
             }
 
             Some("rm") => {
@@ -205,17 +185,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .unwrap();
 
                 store.entries.remove(index);
-                serde_json::to_writer(&store_file, &mut store)?;
+                // serde_json::to_writer(&store_file, &mut store)?;
                 println!("Entry removed!");
             }
 
             Some("list") => {
                 for entry in store.entries.iter() {
-                    println!("{}", decrypt(&entry.name));
+                    println!("{}", &entry.name);
                 }
             }
 
-            Some("exit") => exit_safe(None, store, store_file),
+            Some("exit") => exit_safe(None, store, &mut store_file),
             _ => {
                 println!("Invalid command!");
             }
@@ -223,8 +203,53 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 }
 
-fn exit_safe(dbg: Option<&str>, mut store: Store, store_file: File) -> ! {
-    serde_json::to_writer(&store_file, &mut store).unwrap();
+fn setup_new(store: &mut Store, store_file: &File) -> Result<Vec<u8>, Box<dyn Error>> {
+    println!("Set master password: ");
+    let mut input = String::with_capacity(256);
+    std::io::stdin().read_line(&mut input)?;
+    println!("Confirm master password: ");
+    let mut input2 = String::with_capacity(256);
+    std::io::stdin().read_line(&mut input2)?;
+
+    let pass = if input == input2 {
+        store.master = Some(hash(&input));
+
+        let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
+
+        store.cryptography_data = CryptographyData {
+            salt: Vec::new(),
+            nonce: nonce.to_vec(),
+        };
+
+        serde_json::to_writer(store_file, store)?;
+        println!("Master password set!");
+        Ok(hash(&input))
+    } else {
+        println!("Passwords do not match!");
+        exit(1);
+    };
+    exit(0);
+    pass
+}
+
+fn login_existing(master_pass: &Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
+    println!("Enter master password: ");
+    let mut input = String::with_capacity(256);
+    std::io::stdin().read_line(&mut input)?;
+    let hash = hash(&input);
+    Ok(if &hash == master_pass {
+        println!("Login successful!");
+        hash
+    } else {
+        panic!("Login failed!");
+    })
+}
+
+fn exit_safe(dbg: Option<&str>, mut store: Store, store_file: &mut File) -> ! {
+    serde_json::to_writer(store_file, &mut store).unwrap();
+
+    // write eof
+    // store_file.flush().unwrap();
 
     match dbg {
         Some(dbg) => panic!("{dbg}"),
@@ -232,11 +257,11 @@ fn exit_safe(dbg: Option<&str>, mut store: Store, store_file: File) -> ! {
     }
 }
 
-fn hash_str(input: &str) -> String {
+fn hash(input: &str) -> Vec<u8> {
     let mut hasher = Sha256::new();
     hasher.update(input);
     let result = hasher.finalize();
-    format!("{:x}", result)
+    result.to_vec()
 }
 
 fn is_empty(input: &File) -> bool {
