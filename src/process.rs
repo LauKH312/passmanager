@@ -128,12 +128,12 @@ pub fn prompt_new_master_password() -> Result<Vec<u8>, Box<dyn Error>> {
     }
 }
 
-pub fn prompt_login(master_pass: &Vec<u8>) -> Result<Vec<u8>, Box<dyn Error>> {
+pub fn prompt_login(master_pass: &Vec<u8>, master_salt: &[u8]) -> Result<Vec<u8>, Box<dyn Error>> {
     println!("Enter master password: ");
     let mut input = String::with_capacity(256);
     std::io::stdin().read_line(&mut input)?;
 
-    let hash = crypto_utils::hash(&input);
+    let hash = crypto_utils::hash_and_salt_secret(input.as_bytes(), master_salt);
     if &hash == master_pass {
         println!("Login successful!");
         Ok(input.into_bytes())

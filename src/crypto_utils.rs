@@ -33,10 +33,25 @@ pub fn random_text(len: usize) -> String {
     str
 }
 
-pub fn generate_salt() -> [u8; 12] {
-    // generate random salt
-    let mut salt = [0u8; 12];
+/// Returns a tuple of (salted master, salt)
+pub fn salt_secret(secret: &[u8], salt: &[u8]) -> String {
+    let concatenated = format!(
+        "{}{}",
+        String::from_utf8_lossy(secret),
+        String::from_utf8_lossy(salt)
+    );
+
+    concatenated
+}
+
+pub fn hash_and_salt_secret(secret: &[u8], salt: &[u8]) -> Vec<u8> {
+    let master_salted = salt_secret(secret, salt);
+    hash(&master_salted)
+}
+
+pub fn generate_salt(secret_length: usize) -> Vec<u8> {
     let mut rng = OsRng;
+    let mut salt = vec![0u8; secret_length];
     rng.fill_bytes(&mut salt);
     salt
 }

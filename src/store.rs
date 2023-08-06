@@ -1,4 +1,4 @@
-use crate::{crypto_utils::CryptographyData, BACKUP_URL, STORE_URL};
+use crate::{BACKUP_URL, STORE_URL};
 use std::{collections::HashMap, error::Error, fs::File};
 
 use aes_gcm::{
@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Store {
     pub master: Option<Vec<u8>>,
+    pub master_salt: Option<Vec<u8>>,
     pub entries: HashMap<String, Entry>,
 }
 
@@ -17,6 +18,7 @@ impl Store {
     pub fn empty() -> Store {
         Store {
             master: None,
+            master_salt: None,
             entries: HashMap::new(),
         }
     }
@@ -26,7 +28,7 @@ impl Store {
 pub struct Entry {
     pub password: Vec<u8>,
     pub username: Option<Vec<u8>>,
-    pub cryptography_data: CryptographyData,
+    pub nonce: Vec<u8>,
 }
 
 impl Entry {
@@ -34,32 +36,20 @@ impl Entry {
         let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
         let nonce = nonce.to_vec();
 
-        let salt = crate::crypto_utils::random_bytes(12);
-
         Entry {
             password: password_encrypted,
             username: username_encrypted,
-            cryptography_data: CryptographyData { salt, nonce },
+            nonce,
         }
     }
 
     pub fn encrypt(&mut self, data: &[u8], master_password: &[u8]) -> Vec<u8> {
-        let mut data = data.to_vec();
-
         assert!(data.len() <= 32);
-
-        let salt_avail_space = 32 - data.len();
-
-        {
-            let salt = crate::crypto_utils::random_bytes(salt_avail_space);
-            data.extend(&salt);
-            self.cryptography_data.salt = salt;
-        }
 
         let key = Key::<Aes256Gcm>::from_slice(master_password);
         let cipher = Aes256Gcm::new(key);
-        let nonce = Nonce::from_slice(&self.cryptography_data.nonce);
-        cipher.encrypt(nonce, data.as_slice()).unwrap()
+        let nonce = Nonce::from_slice(&self.nonce);
+        cipher.encrypt(nonce, data).unwrap()
     }
 
     pub fn decrypt(&self, master_password: &[u8]) -> aead::Result<Entry> {
@@ -67,24 +57,19 @@ impl Entry {
 
         let key = Key::<Aes256Gcm>::from_slice(master_password);
         let cipher = Aes256Gcm::new(key);
-        let nonce = self.cryptography_data.nonce.clone();
+        let nonce = self.nonce.clone();
         let decrypted = cipher.decrypt(Nonce::from_slice(&nonce), entry.password.as_slice())?;
 
-        let salt_len = 32 - decrypted.len();
-        let salt = &decrypted[salt_len..];
-        let password = &decrypted[..salt_len];
+        assert!(decrypted.len() <= 32);
+
+        let password = &decrypted;
 
         entry.password = password.to_vec();
-        entry.cryptography_data.salt = salt.to_vec();
 
         if let Some(username) = &entry.username {
             let decrypted = cipher.decrypt(Nonce::from_slice(&nonce), username.as_slice())?;
-            let salt_len = 32 - decrypted.len();
-            let salt = &decrypted[salt_len..];
-            let username = &decrypted[..salt_len];
 
-            entry.username = Some(username.to_vec());
-            entry.cryptography_data.salt = salt.to_vec();
+            entry.username = Some(decrypted.to_vec());
         }
 
         Ok(entry)

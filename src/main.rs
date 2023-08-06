@@ -56,15 +56,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // if store is not empty, prompt login, and hashes provided pass.
     let master = match store.master.as_ref() {
-        Some(master_hash) => process::prompt_login(master_hash),
+        Some(master_hash) => {
+            process::prompt_login(master_hash, store.master_salt.as_ref().unwrap())
+        }
 
         // Handle case where master password is not set.
         // Matches if user has properly set the new master password.
         None => match process::prompt_new_master_password() {
             Ok(master) => {
-                let master_hash = String::from_utf8(master.clone())?;
-                let master_hash = crypto_utils::hash(&master_hash);
+                let salt = crypto_utils::generate_salt(master.len());
+                let master_hash = crypto_utils::hash_and_salt_secret(&master, &salt);
 
+                store.master_salt = Some(salt.to_vec());
                 store.master = Some(master_hash);
 
                 println!("Successfully created new key!");
