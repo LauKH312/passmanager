@@ -1,17 +1,10 @@
-use std::{fs::File, path::Path, process::exit};
+use std::{fs::File, path::Path};
 
 use crate::store::Store;
 
 mod crypto_utils;
 mod process;
 mod store;
-// use clap::Parser;
-
-// #[derive(Parser, Debug)]
-// #[command(author, about, version)]
-// struct Args {
-
-// }
 
 const STORE_URL: &str = r"C:\Temp\cpasswordstore\store.json";
 const BACKUP_URL: &str = r"C:\Temp\cpasswordstore\store-bac.json";
@@ -34,12 +27,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 Err(e) => println!("Restoring backup failed! {e}"),
             },
 
-            false => match store::create_store() {
+            false => match store::create() {
                 Ok(_) => println!("Created new store!"),
                 Err(e) => println!("Creating new store failed! {e}"),
             },
         };
-        exit(0); // exit program
+        std::process::exit(0);
     }
 
     // load store
@@ -65,7 +58,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         None => match process::prompt_new_master_password() {
             Ok(master) => {
                 let salt = crypto_utils::generate_salt(master.len());
-                let master_hash = crypto_utils::hash_and_salt_secret(&master, &salt);
+                let master_hash = crypto_utils::hash_and_salt(&master, &salt);
 
                 store.master_salt = Some(salt.to_vec());
                 store.master = Some(master_hash);
@@ -80,11 +73,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
+    // clear screen
+    print!("\x1B[2J\x1B[1;1H");
+
     if let Err(e) = master {
         println!("{e}");
         process::exit_safe(None, store, &mut store_writer);
     } else {
-        println!("Login successful!");
+        println!("Passmanager v0.1.0");
     }
 
     let mut master = master?;

@@ -92,7 +92,7 @@ impl Entry {
     }
 }
 
-pub fn create_store() -> Result<(), Box<dyn Error>> {
+pub fn create() -> Result<(), Box<dyn Error>> {
     println!("Store is empty, creating new store...");
     let store: Store = Store::empty();
     let writer = File::create(STORE_URL)?;

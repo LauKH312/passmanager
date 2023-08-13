@@ -16,14 +16,6 @@ pub fn hash(input: &str) -> Vec<u8> {
     result.to_vec()
 }
 
-#[allow(dead_code)]
-pub fn random_bytes(len: usize) -> Vec<u8> {
-    let mut rng = OsRng;
-    let mut bytes = vec![0u8; len];
-    rng.fill_bytes(&mut bytes);
-    bytes
-}
-
 pub fn random_text(len: usize) -> String {
     let mut rng = OsRng;
     let mut str = String::with_capacity(len);
@@ -34,7 +26,7 @@ pub fn random_text(len: usize) -> String {
 }
 
 /// Returns a tuple of (salted master, salt)
-pub fn salt_secret(secret: &[u8], salt: &[u8]) -> String {
+fn salt_secret(secret: &[u8], salt: &[u8]) -> String {
     let concatenated = format!(
         "{}{}",
         String::from_utf8_lossy(secret),
@@ -44,7 +36,7 @@ pub fn salt_secret(secret: &[u8], salt: &[u8]) -> String {
     concatenated
 }
 
-pub fn hash_and_salt_secret(secret: &[u8], salt: &[u8]) -> Vec<u8> {
+pub fn hash_and_salt(secret: &[u8], salt: &[u8]) -> Vec<u8> {
     let master_salted = salt_secret(secret, salt);
     hash(&master_salted)
 }
