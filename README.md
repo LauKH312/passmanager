@@ -18,5 +18,8 @@ _This manager is **not** intended for real world use._
 
 ## Omissions
 
+Some important features are omitted from this project, as they are not the focus of the project. Most of these are relatively minor or trivial additions. The omissions include:
+
 - No zeroization of sensitive data
 - No password strength checking
+- Password length not configurable.
