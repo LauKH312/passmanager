@@ -1,5 +1,7 @@
 use std::{error::Error, fs::File, process::exit, str::SplitWhitespace};
 
+use zeroize::Zeroize;
+
 use crate::{
     crypto_utils,
     store::{Entry, Store},
@@ -102,11 +104,21 @@ pub fn list_cmd(store: &Store) {
     }
 }
 
-pub fn exit_safe(dbg: Option<&str>, store: Store, store_file: &mut File) -> ! {
+pub fn exit_safe(
+    dbg: Option<&str>,
+    store: Store,
+    store_file: &mut File,
+    master: Option<Vec<u8>>,
+) -> ! {
     serde_json::to_writer(store_file, &store).unwrap();
 
     // write eof
     // store_file.flush().unwrap();
+
+    let mut master = master;
+    if let Some(master) = master.as_mut() {
+        master.zeroize();
+    }
 
     match dbg {
         Some(dbg) => panic!("{dbg}"),

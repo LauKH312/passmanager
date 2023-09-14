@@ -1,6 +1,6 @@
-use std::{fs::File, path::Path};
-
 use crate::store::Store;
+use std::{fs::File, path::Path};
+use zeroize::Zeroize;
 
 mod crypto_utils;
 mod process;
@@ -68,7 +68,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
             Err(e) => {
                 println!("{e}");
-                process::exit_safe(None, store, &mut store_writer);
+                process::exit_safe(None, store, &mut store_writer, None);
             }
         },
     };
@@ -78,7 +78,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     if let Err(e) = master {
         println!("{e}");
-        process::exit_safe(None, store, &mut store_writer);
+        process::exit_safe(None, store, &mut store_writer, None);
     } else {
         println!("Passmanager v0.1.0");
     }
@@ -112,8 +112,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             Some("list") => process::list_cmd(&store),
 
-            Some("exit") => process::exit_safe(None, store, &mut store_writer),
-
+            Some("exit") => process::exit_safe(None, store, &mut store_writer, Some(master)),
+            
             _ => {
                 println!("Invalid command!");
             }
