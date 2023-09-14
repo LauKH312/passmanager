@@ -6,7 +6,7 @@
 
 Short project implementing an ultra-simple password manager in Rust with the following features:
 
-- Password hashing with SHA2 and salt
+- Master password hashing with SHA2 and salt
 - Password encryption with AES256-GCM
 - Serialized password storage using Serde-JSON.
 - Password generation
