@@ -21,4 +21,4 @@ _This manager is **not** intended for real-world use._
 Some important features are omitted from this project, as they are not the focus of the project. Most are relatively minor or trivial additions. Omissions include:
 
 - No password strength checking
-- Password length not configurable.
+- Generated password length not configurable.
