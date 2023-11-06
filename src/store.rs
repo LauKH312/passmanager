@@ -1,4 +1,4 @@
-use crate::{BACKUP_URL, STORE_URL};
+use crate::STORE_PATH;
 use std::{collections::HashMap, error::Error, fs::File};
 
 use aes_gcm::{
@@ -21,6 +21,15 @@ impl Store {
             master_salt: None,
             entries: HashMap::new(),
         }
+    }
+
+    pub fn create() -> Result<(), Box<dyn Error>> {
+        println!("Store is empty, creating new store...");
+        let store: Store = Store::empty();
+        let writer = File::create(STORE_PATH)?;
+        serde_json::to_writer(&writer, &store)?;
+        println!("Store created!");
+        Ok(())
     }
 }
 
@@ -92,21 +101,12 @@ impl Entry {
     }
 }
 
-pub fn create() -> Result<(), Box<dyn Error>> {
-    println!("Store is empty, creating new store...");
-    let store: Store = Store::empty();
-    let writer = File::create(STORE_URL)?;
-    serde_json::to_writer(&writer, &store)?;
-    println!("Store created!");
-    Ok(())
-}
-
-pub fn load_from_backup() -> Result<(), Box<dyn Error>> {
+/// Copies the contents of origin_path to destination_path, overwriting any file at destination_path.
+pub fn filecpy(destination_path: &str, origin_path: &str) -> Result<(), Box<dyn Error>> {
     println!("Store is empty, restoring from backup...");
-    let store_file = File::create(STORE_URL)?;
-    let backup_file = File::open(BACKUP_URL)?;
-    let backup: Store = serde_json::from_reader(&backup_file)?;
-    serde_json::to_writer(store_file, &backup)?;
+    let mut origin = File::create(destination_path)?;
+    let mut destination = File::open(origin_path)?;
+    std::io::copy(&mut destination, &mut origin)?;
 
     Ok(())
 }

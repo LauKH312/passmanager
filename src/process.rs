@@ -1,9 +1,9 @@
-use std::{error::Error, fs::File, process::exit, str::SplitWhitespace};
+use std::{error::Error, fs::File, str::SplitWhitespace};
 
 use zeroize::Zeroize;
 
 use crate::{
-    crypto_utils,
+    crypto,
     store::{Entry, Store},
 };
 
@@ -52,7 +52,7 @@ pub fn generate_cmd(args: &mut SplitWhitespace<'_>, master: &[u8], store: &mut S
             return;
         }
     };
-    let password = crypto_utils::random_text(32);
+    let password = crypto::random_text(32);
     println!("Generated password: [{password}]");
     let entry = Entry::from_unencrypted(Some(username.as_bytes()), password.as_bytes(), master);
     store.entries.insert(name.to_string(), entry);
@@ -112,24 +112,23 @@ pub fn exit_safe(
 ) -> ! {
     serde_json::to_writer(store_file, &store).unwrap();
 
-    // write eof
-    // store_file.flush().unwrap();
-
     let mut master = master;
     if let Some(master) = master.as_mut() {
         master.zeroize();
     }
 
-    match dbg {
-        Some(dbg) => panic!("{dbg}"),
-        None => exit(0),
+    if let Some(msg) = dbg {
+        eprintln!("{msg}");
     }
+
+    std::process::exit(0);
 }
 
 pub fn prompt_new_master_password() -> Result<Vec<u8>, Box<dyn Error>> {
     println!("Set master password (no longer than 28 characters): ");
     let mut input = String::with_capacity(256);
     std::io::stdin().read_line(&mut input)?;
+
     println!("Confirm master password: ");
     let mut input2 = String::with_capacity(256);
     std::io::stdin().read_line(&mut input2)?;
@@ -145,7 +144,7 @@ pub fn prompt_login(master_pass: &Vec<u8>, master_salt: &[u8]) -> Result<Vec<u8>
     let mut input = String::with_capacity(256);
     std::io::stdin().read_line(&mut input)?;
 
-    let hash = crypto_utils::hash_and_salt(input.as_bytes(), master_salt);
+    let hash = crypto::salt_and_hash(input.as_bytes(), master_salt);
     if &hash == master_pass {
         println!("Login successful!");
         Ok(input.into_bytes())
@@ -155,6 +154,7 @@ pub fn prompt_login(master_pass: &Vec<u8>, master_salt: &[u8]) -> Result<Vec<u8>
 }
 
 pub fn print_guide() {
+    // note: indentation is intentional
     println!(
         r"
     -------------------------------
@@ -164,8 +164,12 @@ pub fn print_guide() {
     get <name>                              -- get entry from store
     rm <name>                               -- remove entry from store
     list                                    -- list all entries
-    exit                                    -- exit program (DO NOT USE CTRL+C)
+    exit                                    -- exit program
     -------------------------------
     "
     );
+}
+
+pub fn clear_screen() {
+    print!("\x1B[2J\x1B[1;1H");
 }

@@ -19,8 +19,10 @@ pub fn hash(input: &str) -> Vec<u8> {
 pub fn random_text(len: usize) -> String {
     let mut rng = OsRng;
     let mut str = String::with_capacity(len);
+
     for _ in 0..len {
-        str.push(rng.gen_range(33_u8..127) as char);
+        let visual_ascii = 33_u8..127;
+        str.push(rng.gen_range(visual_ascii) as char);
     }
     str
 }
@@ -36,7 +38,7 @@ fn salt_secret(secret: &[u8], salt: &[u8]) -> String {
     concatenated
 }
 
-pub fn hash_and_salt(secret: &[u8], salt: &[u8]) -> Vec<u8> {
+pub fn salt_and_hash(secret: &[u8], salt: &[u8]) -> Vec<u8> {
     let master_salted = salt_secret(secret, salt);
     hash(&master_salted)
 }

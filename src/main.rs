@@ -1,33 +1,37 @@
 use crate::store::Store;
 use std::{fs::File, path::Path};
-use zeroize::Zeroize;
 
-mod crypto_utils;
+mod crypto;
 mod process;
 mod store;
 
-const STORE_URL: &str = r"C:\Temp\cpasswordstore\store.json";
-const BACKUP_URL: &str = r"C:\Temp\cpasswordstore\store-bac.json";
+const STORE_PATH: &str = r"C:\Temp\cpasswordstore\store.json";
+const BACKUP_PATH: &str = r"C:\Temp\cpasswordstore\store-bac.json";
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    // check if store exists
-    if !Path::new(STORE_URL).exists() {
+    ctrlc::set_handler(|| {
+        println!("To exit safely, type 'exit'.");
+
+        // TODO: Allow user to exit safely with Ctrl+C
+    })?;
+
+    if !Path::new(STORE_PATH).exists() {
         println!("Store does not exist, creating store file...");
-        File::create(STORE_URL)?;
+        File::create(STORE_PATH)?;
         println!("Store file created!");
     }
 
-    let store_file = File::open(STORE_URL)?;
+    let store_file = File::open(STORE_PATH)?;
 
     // if store is empty, create new store or restore from backup
     if store::is_empty(&store_file) {
-        match Path::new(BACKUP_URL).exists() {
-            true => match store::load_from_backup() {
+        match Path::new(BACKUP_PATH).exists() {
+            true => match store::filecpy(STORE_PATH, BACKUP_PATH) {
                 Ok(_) => println!("Restored from backup!"),
                 Err(e) => println!("Restoring backup failed! {e}"),
             },
 
-            false => match store::create() {
+            false => match Store::create() {
                 Ok(_) => println!("Created new store!"),
                 Err(e) => println!("Creating new store failed! {e}"),
             },
@@ -35,17 +39,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::process::exit(0);
     }
 
-    // load store
     let mut store: Store = serde_json::from_reader(&store_file)?;
 
     {
         // Create backup, later File::create() will overwrite existing file
-        let backup = File::create(BACKUP_URL)?;
+        let backup = File::create(BACKUP_PATH)?;
         serde_json::to_writer(&backup, &store)?;
     }
 
-    // create write
-    let mut store_writer = File::create(STORE_URL)?;
+    let mut store_writer = File::create(STORE_PATH)?;
 
     // if store is not empty, prompt login, and hashes provided pass.
     let master = match store.master.as_ref() {
@@ -57,8 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         // Matches if user has properly set the new master password.
         None => match process::prompt_new_master_password() {
             Ok(master) => {
-                let salt = crypto_utils::generate_salt(master.len());
-                let master_hash = crypto_utils::hash_and_salt(&master, &salt);
+                let salt = crypto::generate_salt(master.len());
+                let master_hash = crypto::salt_and_hash(&master, &salt);
 
                 store.master_salt = Some(salt.to_vec());
                 store.master = Some(master_hash);
@@ -73,15 +75,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         },
     };
 
-    // clear screen
-    print!("\x1B[2J\x1B[1;1H");
+    process::clear_screen();
 
     if let Err(e) = master {
-        println!("{e}");
+        eprintln!("{e}");
         process::exit_safe(None, store, &mut store_writer, None);
-    } else {
-        println!("Passmanager v0.1.0");
     }
+
+    println!("Passmanager v0.1.0");
 
     let mut master = master?;
 
@@ -89,7 +90,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         master.push(0);
     }
 
-    assert_eq!(master.len(), 32, "Key length is not 32 bytes!");
+    // Assert length is not above 32 bytes
+    assert_eq!(master.len(), 32, "Key length is not 32 bytes");
 
     process::print_guide();
 
@@ -103,19 +105,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         match args.next() {
             Some("add") => process::add_cmd(&mut args, &master, &mut store),
-
             Some("generate") => process::generate_cmd(&mut args, &master, &mut store),
-
             Some("get") => process::get_cmd(&mut args, &store, &master),
-
             Some("rm") => process::rm_cmd(args, &mut store),
-
             Some("list") => process::list_cmd(&store),
-
             Some("exit") => process::exit_safe(None, store, &mut store_writer, Some(master)),
-            
             _ => {
-                println!("Invalid command!");
+                eprintln!("Invalid command");
             }
         }
     }
