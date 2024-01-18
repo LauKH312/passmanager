@@ -8,7 +8,7 @@
 
 Short project implementing a password manager in Rust with the following features:
 
-- Password hashing with SHA2 and salt
+- Master password hashing with SHA2 and salt
 - Password encryption with AES256-GCM
 - Serialized password storage using Serde-JSON.
 - Password generation
@@ -97,7 +97,3 @@ Exits the password manager.
     > list
     > exit
 ```
-
-### License
-
-Do whatever you want, idc. Don't blame me for anything that happens to your system, your data og anything. Also breaking the law is not cool, so don't do that.
